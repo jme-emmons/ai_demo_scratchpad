@@ -1,0 +1,6 @@
+streamlit>=1.44.0
+redis>=5.0.4
+numpy>=1.26.0
+requests>=2.31.0
+python-dotenv>=1.0.1
+pypdf>=4.2.0
