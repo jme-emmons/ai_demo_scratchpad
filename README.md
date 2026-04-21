@@ -68,14 +68,45 @@ REDIS_PORT=<your redis port>
 REDIS_PASSWORD=<your redis password>
 REDIS_SSL=false
 
-EMBEDDING_ENDPOINT=https://granite-embedding-english-r2-rag.apps.mays-demo.sandbox3060.opentlc.com
+EMBEDDING_ENDPOINT=https://granite-embedding-english-r2-rag.apps.mays-demo.sandbox3060.opentlc.com/v1
 EMBEDDING_API_FORMAT=openai_embeddings
-EMBEDDING_MODEL=granite-embedding-english-r2-rag
+EMBEDDING_MODEL=granite-embedding-english-r2
 
 LLM_ENDPOINT=https://llama-32-3b-instruct-rag.apps.mays-demo.sandbox3060.opentlc.com
 LLM_API_FORMAT=openai_chat
 LLM_MODEL=llama-3.2-3b-instruct
+MODEL_API_KEY=not-needed-for-internal-service
 ```
+
+For a TLS-enabled Redis deployment, configure the equivalent of:
+
+```bash
+redis-cli -h <hostname> -p <port> --tls --cacert <cert file> --sni <hostname>
+```
+
+Use these `.env` settings instead:
+
+```bash
+REDIS_HOST=<your redis host>
+REDIS_PORT=<your redis port>
+REDIS_PASSWORD=<your redis password>
+REDIS_SSL=true
+REDIS_CA_CERT_PATH=/path/to/redis-ca.pem
+REDIS_SNI_HOSTNAME=<your redis host>
+```
+
+If you cannot mount a CA cert file easily in the workbench, you can also use inline certificate text:
+
+```bash
+REDIS_SSL=true
+REDIS_CA_CERT_TEXT="-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----"
+REDIS_SNI_HOSTNAME=<your redis host>
+```
+
+When `REDIS_CA_CERT_TEXT` is set, the app writes the certificate to a temporary PEM file before creating the Redis client. Prefer `REDIS_CA_CERT_PATH` when possible because it is easier to manage securely.
+In standard `redis-py` TLS setups, hostname verification follows `REDIS_HOST`, so you should usually set `REDIS_HOST` and `REDIS_SNI_HOSTNAME` to the same certificate-valid hostname.
 
 If your OpenShift AI model serving endpoints are not OpenAI-compatible, adjust these values:
 

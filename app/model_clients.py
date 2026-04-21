@@ -199,6 +199,7 @@ class EmbeddingClient(EndpointClient):
             raise ModelClientError(
                 "Embedding endpoint could not be reached with the OpenAI client. "
                 f"Tried base URLs: {', '.join(attempted_bases)}. "
+                f"Requested model: {settings.embedding_model}. "
                 "The app prefers a /v1 base URL for OpenAI-compatible embeddings and also checks "
                 "/v1/openai/v1 for OpenShift AI Llama Stack-style routes. "
                 "If this service is TEI-backed instead, set EMBEDDING_API_FORMAT=tei. "
