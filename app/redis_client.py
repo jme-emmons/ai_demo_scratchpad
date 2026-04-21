@@ -64,7 +64,6 @@ def get_redis_client() -> redis.Redis:
     }
     if settings.redis_ssl:
         ca_cert_path = _redis_ca_cert_path()
-        kwargs["connection_class"] = SNIOverrideSSLConnection
         kwargs["ssl_cert_reqs"] = "required"
         if ca_cert_path:
             kwargs["ssl_ca_certs"] = ca_cert_path
@@ -73,7 +72,7 @@ def get_redis_client() -> redis.Redis:
         else:
             kwargs["ssl_check_hostname"] = False
             kwargs["ssl_cert_reqs"] = None
+        pool = redis.ConnectionPool(connection_class=SNIOverrideSSLConnection, **kwargs)
+        return redis.Redis(connection_pool=pool)
 
-    return redis.Redis(
-        **kwargs,
-    )
+    return redis.Redis(**kwargs)
