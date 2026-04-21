@@ -54,18 +54,22 @@ class EndpointClient:
     def __init__(self) -> None:
         self.timeout = settings.request_timeout_seconds
 
-    def _headers(self) -> dict[str, str]:
+    @staticmethod
+    def _openai_api_key() -> str:
+        return settings.model_api_key or "not-needed-for-internal-service"
+
+    def _headers(self, for_openai: bool = False) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
-        if settings.model_api_key:
-            headers["Authorization"] = f"Bearer {settings.model_api_key}"
+        if for_openai or settings.model_api_key:
+            headers["Authorization"] = f"Bearer {self._openai_api_key()}"
         return headers
 
-    def _post(self, url: str, payload: dict[str, Any]) -> tuple[dict[str, Any], float]:
+    def _post(self, url: str, payload: dict[str, Any], for_openai: bool = False) -> tuple[dict[str, Any], float]:
         started = time.perf_counter()
         try:
             response = requests.post(
                 url,
-                headers=self._headers(),
+                headers=self._headers(for_openai=for_openai),
                 json=payload,
                 timeout=self.timeout,
             )
@@ -83,13 +87,14 @@ class EndpointClient:
         base_url: str,
         payload: dict[str, Any],
         suffixes: list[str],
+        for_openai: bool = False,
     ) -> tuple[dict[str, Any], float]:
         attempted_urls: list[str] = []
         last_error: Exception | None = None
         for url in self._candidate_urls(base_url, suffixes):
             attempted_urls.append(url)
             try:
-                return self._post(url, payload)
+                return self._post(url, payload, for_openai=for_openai)
             except ModelClientError as exc:
                 last_error = exc
                 if "404" not in str(exc):
@@ -146,7 +151,7 @@ class EmbeddingClient(EndpointClient):
         if fmt == "openai_embeddings":
             last_error: Exception | None = None
             attempted_bases: list[str] = []
-            api_key = settings.model_api_key or "not-needed-for-internal-service"
+            api_key = self._openai_api_key()
             for base_url in self._openai_base_url_candidates(
                 settings.embedding_endpoint,
                 OPENAI_EMBEDDING_ENDPOINT_SUFFIXES,
@@ -179,6 +184,7 @@ class EmbeddingClient(EndpointClient):
                     settings.embedding_endpoint,
                     payload,
                     TEI_EMBEDDING_SUFFIXES,
+                    for_openai=False,
                 )
             except ModelClientError as exc:
                 raise ModelClientError(
@@ -203,7 +209,7 @@ class LLMClient(EndpointClient):
             messages.append({"role": "user", "content": prompt})
             last_error: Exception | None = None
             attempted_bases: list[str] = []
-            api_key = settings.model_api_key or "not-needed-for-internal-service"
+            api_key = self._openai_api_key()
             for base_url in self._openai_base_url_candidates(
                 settings.llm_endpoint,
                 OPENAI_CHAT_ENDPOINT_SUFFIXES,
@@ -250,6 +256,7 @@ class LLMClient(EndpointClient):
                 settings.llm_endpoint,
                 payload,
                 ["/generate", "/v1/completions"],
+                for_openai=False,
             )
             if isinstance(data, list) and data:
                 text = data[0].get("generated_text", "")
