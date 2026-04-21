@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ssl
 import tempfile
 from pathlib import Path
 
 import redis
+from redis.connection import SSLConnection
 
 from app.config import settings
 
@@ -25,6 +27,33 @@ def _redis_ca_cert_path() -> str | None:
     return str(cert_file)
 
 
+class SNIOverrideSSLConnection(SSLConnection):
+    def _wrap_socket_with_ssl(self, sock):
+        context = ssl.create_default_context()
+        context.check_hostname = self.check_hostname
+        context.verify_mode = self.cert_reqs
+
+        if self.certfile or self.keyfile:
+            context.load_cert_chain(
+                certfile=self.certfile,
+                keyfile=self.keyfile,
+                password=self.certificate_password,
+            )
+        if self.ca_certs is not None or self.ca_path is not None or self.ca_data is not None:
+            context.load_verify_locations(
+                cafile=self.ca_certs,
+                capath=self.ca_path,
+                cadata=self.ca_data,
+            )
+        if self.ssl_min_version is not None:
+            context.minimum_version = self.ssl_min_version
+        if self.ssl_ciphers:
+            context.set_ciphers(self.ssl_ciphers)
+
+        server_hostname = settings.redis_sni_hostname or self.host
+        return context.wrap_socket(sock, server_hostname=server_hostname)
+
+
 def get_redis_client() -> redis.Redis:
     kwargs = {
         "host": settings.redis_host,
@@ -35,15 +64,11 @@ def get_redis_client() -> redis.Redis:
     }
     if settings.redis_ssl:
         ca_cert_path = _redis_ca_cert_path()
+        kwargs["connection_class"] = SNIOverrideSSLConnection
         kwargs["ssl_cert_reqs"] = "required"
         if ca_cert_path:
             kwargs["ssl_ca_certs"] = ca_cert_path
-        if settings.redis_sni_hostname:
-            # redis-py performs hostname verification against the TCP host.
-            # Keep REDIS_SNI_HOSTNAME available in config/docs, but prefer REDIS_HOST
-            # to match the certificate name for standard deployments.
-            kwargs["ssl_check_hostname"] = True
-        elif ca_cert_path:
+        if settings.redis_sni_hostname or ca_cert_path:
             kwargs["ssl_check_hostname"] = True
         else:
             kwargs["ssl_check_hostname"] = False
