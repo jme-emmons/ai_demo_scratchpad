@@ -21,6 +21,7 @@ class Settings:
     redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
     redis_password: str | None = os.getenv("REDIS_PASSWORD")
     redis_ssl: bool = _as_bool(os.getenv("REDIS_SSL"), False)
+    redis_ssl_check_hostname: bool = _as_bool(os.getenv("REDIS_SSL_CHECK_HOSTNAME"), True)
     redis_ca_cert_path: str | None = os.getenv("REDIS_CA_CERT_PATH")
     redis_ca_cert_text: str | None = os.getenv("REDIS_CA_CERT_TEXT")
     redis_sni_hostname: str | None = os.getenv("REDIS_SNI_HOSTNAME")

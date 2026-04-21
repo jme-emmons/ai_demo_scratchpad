@@ -91,6 +91,7 @@ REDIS_HOST=<your redis host>
 REDIS_PORT=<your redis port>
 REDIS_PASSWORD=<your redis password>
 REDIS_SSL=true
+REDIS_SSL_CHECK_HOSTNAME=true
 REDIS_CA_CERT_PATH=/path/to/redis-ca.pem
 REDIS_SNI_HOSTNAME=<your redis host>
 ```
@@ -99,6 +100,7 @@ If you cannot mount a CA cert file easily in the workbench, you can also use inl
 
 ```bash
 REDIS_SSL=true
+REDIS_SSL_CHECK_HOSTNAME=true
 REDIS_CA_CERT_TEXT="-----BEGIN CERTIFICATE-----
 ...
 -----END CERTIFICATE-----"
@@ -107,6 +109,7 @@ REDIS_SNI_HOSTNAME=<your redis host>
 
 When `REDIS_CA_CERT_TEXT` is set, the app writes the certificate to a temporary PEM file before creating the Redis client. Prefer `REDIS_CA_CERT_PATH` when possible because it is easier to manage securely.
 In standard `redis-py` TLS setups, hostname verification follows `REDIS_HOST`, so you should usually set `REDIS_HOST` and `REDIS_SNI_HOSTNAME` to the same certificate-valid hostname.
+If your Redis route is trusted by the CA cert but presents a certificate whose DNS names do not match the external route hostname, set `REDIS_SSL_CHECK_HOSTNAME=false` to keep CA validation enabled while skipping hostname matching.
 
 If your OpenShift AI model serving endpoints are not OpenAI-compatible, adjust these values:
 

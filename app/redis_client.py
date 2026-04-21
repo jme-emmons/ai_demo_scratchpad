@@ -30,7 +30,7 @@ def _redis_ca_cert_path() -> str | None:
 class SNIOverrideSSLConnection(SSLConnection):
     def _wrap_socket_with_ssl(self, sock):
         context = ssl.create_default_context()
-        context.check_hostname = self.check_hostname
+        context.check_hostname = settings.redis_ssl_check_hostname and self.check_hostname
         context.verify_mode = self.cert_reqs
 
         if self.certfile or self.keyfile:
@@ -66,11 +66,10 @@ def get_redis_client() -> redis.Redis:
         kwargs["ssl_cert_reqs"] = "required"
         if ca_cert_path:
             kwargs["ssl_ca_certs"] = ca_cert_path
-        if settings.redis_sni_hostname or ca_cert_path:
+        if settings.redis_ssl_check_hostname and (settings.redis_sni_hostname or ca_cert_path):
             kwargs["ssl_check_hostname"] = True
         else:
             kwargs["ssl_check_hostname"] = False
-            kwargs["ssl_cert_reqs"] = None
         pool = redis.ConnectionPool(connection_class=SNIOverrideSSLConnection, **kwargs)
         return redis.Redis(connection_pool=pool)
 
