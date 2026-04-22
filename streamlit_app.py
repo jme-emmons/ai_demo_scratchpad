@@ -209,12 +209,6 @@ def main() -> None:
     with left_col:
         st.subheader("Baseline Chat")
         st.caption("Direct LLM chat using the same model and system prompt, without Redis-backed features.")
-        baseline_messages = st.container(height=420)
-        render_messages(
-            baseline_messages,
-            st.session_state.baseline_messages,
-            "Send a message to test the baseline LLM flow.",
-        )
         with st.form("baseline_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -226,6 +220,12 @@ def main() -> None:
         if baseline_submitted:
             with st.spinner("Baseline chat is generating a response..."):
                 process_baseline_submit(service)
+        baseline_messages = st.container(height=420)
+        render_messages(
+            baseline_messages,
+            st.session_state.baseline_messages,
+            "Send a message to test the baseline LLM flow.",
+        )
         if st.session_state.baseline_error:
             message, details = st.session_state.baseline_error
             render_error(st, message, details)
@@ -235,12 +235,6 @@ def main() -> None:
     with right_col:
         st.subheader("Redis-Enhanced Chat")
         st.caption("Toggle Redis-backed features on or off to compare behavior in the same session.")
-        enhanced_messages = st.container(height=420)
-        render_messages(
-            enhanced_messages,
-            st.session_state.enhanced_messages,
-            "Send a message or upload a file to test the enhanced flow.",
-        )
         with st.form("enhanced_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -249,6 +243,15 @@ def main() -> None:
                 height=80,
             )
             enhanced_submitted = st.form_submit_button("Send to Enhanced", use_container_width=True)
+        if enhanced_submitted:
+            with st.spinner("Enhanced chat is processing with the selected features..."):
+                process_enhanced_submit(service)
+        enhanced_messages = st.container(height=420)
+        render_messages(
+            enhanced_messages,
+            st.session_state.enhanced_messages,
+            "Send a message or upload a file to test the enhanced flow.",
+        )
         feature_box = st.container(border=True)
         with feature_box:
             st.markdown("#### Enhanced Features")
@@ -270,9 +273,6 @@ def main() -> None:
                 f"Estimated cost saved: ${metrics['cost_saved']:.4f}"
             )
             render_enhanced_telemetry(st, enhanced_feature_flags())
-        if enhanced_submitted:
-            with st.spinner("Enhanced chat is processing with the selected features..."):
-                process_enhanced_submit(service)
         if st.session_state.enhanced_error:
             message, details = st.session_state.enhanced_error
             render_error(st, message, details)
