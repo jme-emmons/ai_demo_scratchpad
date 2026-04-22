@@ -10,8 +10,8 @@ resources:
 # Image tag — updated automatically by the CI pipeline after every build.
 #
 # The pipeline runs:
-#   sed -i "s|newName:.*|newName: <registry>/<namespace>/ai-demo-scratchpad|"
-#   sed -i "s|newTag:.*|newTag: <git-commit-sha>|"
+#   sed -i "s|newName: quay.io/cmays20/ai-demo-scratchpad
+#   sed -i "s|newTag: 9b665057da853093afc1a8fc8dd915db3c143db4
 #
 # ArgoCD detects the git commit, syncs this file, and rolls out the new image.
 # Do NOT manually edit newTag in a GitOps workflow — let the pipeline do it.
@@ -19,4 +19,4 @@ resources:
 images:
   - name: ai-demo-scratchpad
     newName: quay.io/cmays20/ai-demo-scratchpad
-    newTag: latest
+    newTag: 9b665057da853093afc1a8fc8dd915db3c143db4
