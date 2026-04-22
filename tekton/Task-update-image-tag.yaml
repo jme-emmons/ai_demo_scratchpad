@@ -92,6 +92,7 @@ spec:
     - name: patch-kustomization
       image: registry.access.redhat.com/ubi9/ubi-minimal:latest
       workingDir: $(workspaces.source.path)
+      computeResources: {}
       env:
         - name: IMAGE_NAME
           value: $(params.image-name)
@@ -128,6 +129,7 @@ spec:
     - name: git-commit-and-push
       image: quay.io/openshift/origin-cli:latest
       workingDir: $(workspaces.source.path)
+      computeResources: {}
       env:
         - name: GIT_USER_NAME
           value: $(params.git-user-name)
