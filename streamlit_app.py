@@ -6,8 +6,7 @@ import uuid
 import streamlit as st
 
 from app.config import settings
-from app.demo_service import DemoService
-from app.seed_data import DEFENSE_KNOWLEDGE_PACK
+from app.demo_service import DemoService, FeatureFlags
 
 
 st.set_page_config(
@@ -25,158 +24,245 @@ def get_demo_service() -> DemoService:
 
 
 def init_session_state() -> None:
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = uuid.uuid4().hex[:12]
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "metrics" not in st.session_state:
-        st.session_state.metrics = {"cache_hits": 0, "tokens_saved": 0, "cost_saved": 0.0}
-    if "last_result" not in st.session_state:
-        st.session_state.last_result = None
+    defaults = {
+        "baseline_messages": [],
+        "enhanced_messages": [],
+        "baseline_last_result": None,
+        "enhanced_last_result": None,
+        "baseline_error": None,
+        "enhanced_error": None,
+        "baseline_input": "",
+        "enhanced_input": "",
+        "enhanced_session_id": uuid.uuid4().hex[:12],
+        "enhanced_metrics": {"cache_hits": 0, "tokens_saved": 0, "cost_saved": 0.0},
+        "enhanced_feature_semantic_cache": False,
+        "enhanced_feature_memory": False,
+        "enhanced_feature_rag": False,
+        "enhanced_feature_routing": False,
+        "enhanced_ingested_uploads": [],
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
-def ingest_seed_data(service: DemoService, session_id: str) -> None:
-    if st.session_state.get("seeded"):
-        return
-    for name, text in DEFENSE_KNOWLEDGE_PACK.items():
-        service.rag.ingest_text(session_id, title=name, source=f"seed:{name}", text=text)
-    st.session_state.seeded = True
+def render_error(container, message: str, details: str) -> None:
+    container.error(message)
+    with container.expander("Technical details"):
+        st.code(details)
 
 
-def render_sidebar_error(message: str, exc: Exception) -> None:
-    st.sidebar.error(message)
-    with st.sidebar.expander("Technical details"):
-        st.code(str(exc))
-        st.code(traceback.format_exc())
-
-
-def render_sidebar(service: DemoService) -> None:
-    st.sidebar.title("Demo Controls")
+def render_sidebar() -> None:
+    st.sidebar.title("Environment")
     st.sidebar.caption("OpenShift AI + Redis reference implementation")
-    st.sidebar.text_input("Session ID", key="session_id")
-    if st.sidebar.button("Load Defense Knowledge Pack", use_container_width=True):
-        try:
-            ingest_seed_data(service, st.session_state.session_id)
-        except Exception as exc:
-            render_sidebar_error(
-                "Unable to load the defense knowledge pack. Check the embedding endpoint route and API format.",
-                exc,
-            )
-        else:
-            st.sidebar.success("Seed documents loaded into Redis vector search.")
-
-    uploads = st.sidebar.file_uploader(
-        "Upload documents for RAG",
-        type=["txt", "md", "pdf"],
-        accept_multiple_files=True,
-    )
-    if uploads:
-        for upload in uploads:
-            try:
-                result = service.rag.ingest_uploaded_file(st.session_state.session_id, upload)
-            except Exception as exc:
-                render_sidebar_error(
-                    f"Unable to ingest {upload.name}. Check the embedding endpoint route and API format.",
-                    exc,
-                )
-                break
-            else:
-                st.sidebar.success(f"Ingested {upload.name}: {result.chunks} chunks")
-
-    if st.sidebar.button("Clear Conversation Memory", use_container_width=True):
-        service.memory.clear(st.session_state.session_id)
-        st.sidebar.info("Memory cleared for the active session.")
-
-    st.sidebar.markdown("### Environment")
     st.sidebar.write(f"LLM format: `{settings.llm_api_format}`")
     st.sidebar.write(f"Embedding format: `{settings.embedding_api_format}`")
     st.sidebar.write(f"Vector index: `{settings.vector_index_name}`")
+    st.sidebar.write(f"Enhanced session: `{st.session_state.enhanced_session_id}`")
 
 
 def render_header() -> None:
     st.title("Redis + OpenShift AI Mission Assistant")
     st.markdown(
-        "Demonstrates semantic caching, semantic routing, Redis-backed memory, vector search, and RAG in one webinar-friendly UI."
+        "Compare a direct baseline LLM chat against a configurable Redis-enhanced chat in one demo-friendly UI."
     )
 
 
-def render_metrics() -> None:
-    metrics = st.session_state.metrics
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Semantic Cache Hits", metrics["cache_hits"])
-    col2.metric("Estimated Tokens Saved", metrics["tokens_saved"])
-    col3.metric("Estimated Cost Saved", f"${metrics['cost_saved']:.4f}")
-    col4.metric("Active Session", st.session_state.session_id)
-
-
-def render_status_panels() -> None:
-    result = st.session_state.last_result
-    col1, col2 = st.columns([1.2, 1])
-    with col1:
-        st.subheader("Conversation")
-        for message in st.session_state.messages:
+def render_messages(container, messages: list[dict[str, str]], empty_text: str) -> None:
+    with container:
+        if not messages:
+            st.info(empty_text)
+        for message in messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-    with col2:
-        st.subheader("Operational Telemetry")
-        if not result:
-            st.info("Ask a question to populate routing, cache, retrieval, and memory telemetry.")
-            return
-        st.write(f"**Route selected:** `{result.route.route}`")
-        st.write(f"**Route rationale:** {result.route.rationale}")
-        st.write(f"**Cache status:** {'Hit' if result.used_cache else 'Miss'}")
-        st.write(f"**Embedding latency:** {result.embedding_latency_ms:.1f} ms")
-        st.write(f"**LLM latency:** {result.llm_latency_ms:.1f} ms")
-        st.write(f"**Estimated total tokens:** {result.total_tokens}")
-        memory = result.memory_summary
-        st.write(f"**Memory turns retained:** {memory['turns']}")
-        st.write(f"**Memory token estimate:** {memory['estimated_tokens']}")
-        st.write("**Memory preview:**")
-        st.caption(memory["preview"] or "No memory yet.")
 
+
+def render_enhanced_telemetry(container, features: FeatureFlags) -> None:
+    result = st.session_state.enhanced_last_result
+    if not result:
+        container.caption("Enhanced telemetry will appear after you send a message.")
+        return
+
+    container.markdown("#### Telemetry")
+    container.write(f"**LLM latency:** {result.llm_latency_ms:.1f} ms")
+    container.write(f"**Estimated total tokens:** {result.total_tokens}")
+    if features.routing:
+        container.write(f"**Route selected:** `{result.route.route}`")
+        container.write(f"**Route rationale:** {result.route.rationale}")
+    if features.semantic_cache:
+        container.write(f"**Cache status:** {'Hit' if result.used_cache else 'Miss'}")
         if result.cache.hit:
-            st.success(
-                f"Semantic cache hit on a similar question. Saved ~{result.cache.tokens_saved} tokens and "
+            container.success(
+                f"Semantic cache hit. Saved ~{result.cache.tokens_saved} tokens and "
                 f"${result.cache.cost_saved:.4f}."
             )
-
-        st.write("**Retrieved evidence:**")
+    if features.semantic_cache or features.rag_context:
+        container.write(f"**Embedding latency:** {result.embedding_latency_ms:.1f} ms")
+    if features.memory:
+        memory = result.memory_summary
+        container.write(f"**Memory turns retained:** {memory['turns']}")
+        container.write(f"**Memory token estimate:** {memory['estimated_tokens']}")
+        container.caption(memory["preview"] or "No memory yet.")
+    if features.rag_context:
+        container.write("**Retrieved evidence:**")
         if result.retrieval_matches:
             for match in result.retrieval_matches:
-                st.markdown(
+                container.markdown(
                     f"- `{match.title or match.source}` | score `{match.score:.4f}`\n\n  {match.text[:180]}..."
                 )
         else:
-            st.caption("No retrieval context used for the last answer.")
+            container.caption("No retrieval context used for the last answer.")
+
+
+def enhanced_feature_flags() -> FeatureFlags:
+    return FeatureFlags(
+        semantic_cache=st.session_state.enhanced_feature_semantic_cache,
+        memory=st.session_state.enhanced_feature_memory,
+        rag_context=st.session_state.enhanced_feature_rag,
+        routing=st.session_state.enhanced_feature_routing,
+    )
+
+
+def process_baseline_submit(service: DemoService) -> None:
+    prompt = st.session_state.baseline_input.strip()
+    if not prompt:
+        return
+    st.session_state.baseline_messages.append({"role": "user", "content": prompt})
+    try:
+        result = service.ask(session_id="baseline", question=prompt, features=FeatureFlags())
+    except Exception as exc:
+        st.session_state.baseline_error = (f"Unable to get a baseline response: {exc}", traceback.format_exc())
+        return
+    st.session_state.baseline_last_result = result
+    st.session_state.baseline_messages.append({"role": "assistant", "content": result.answer})
+    st.session_state.baseline_error = None
+    st.session_state.baseline_input = ""
+
+
+def process_enhanced_submit(service: DemoService) -> None:
+    prompt = st.session_state.enhanced_input.strip()
+    if not prompt:
+        return
+    features = enhanced_feature_flags()
+    st.session_state.enhanced_messages.append({"role": "user", "content": prompt})
+    try:
+        result = service.ask(
+            session_id=st.session_state.enhanced_session_id,
+            question=prompt,
+            features=features,
+        )
+    except Exception as exc:
+        st.session_state.enhanced_error = (f"Unable to get an enhanced response: {exc}", traceback.format_exc())
+        return
+    st.session_state.enhanced_last_result = result
+    st.session_state.enhanced_messages.append({"role": "assistant", "content": result.answer})
+    st.session_state.enhanced_error = None
+    if result.cache.hit:
+        st.session_state.enhanced_metrics["cache_hits"] += 1
+        st.session_state.enhanced_metrics["tokens_saved"] += result.cache.tokens_saved
+        st.session_state.enhanced_metrics["cost_saved"] += result.cache.cost_saved
+    st.session_state.enhanced_input = ""
+
+
+def handle_enhanced_uploads(service: DemoService, container) -> None:
+    uploads = container.file_uploader(
+        "Upload files for the enhanced panel",
+        type=["txt", "md", "pdf"],
+        accept_multiple_files=True,
+        key="enhanced_uploads",
+    )
+    if not uploads:
+        return
+    known_uploads = set(st.session_state.enhanced_ingested_uploads)
+    for upload in uploads:
+        upload_id = f"{upload.name}:{upload.size}"
+        if upload_id in known_uploads:
+            continue
+        try:
+            result = service.ingest_uploaded_file(st.session_state.enhanced_session_id, upload)
+        except Exception as exc:
+            render_error(container, f"Unable to ingest {upload.name}.", traceback.format_exc())
+            break
+        else:
+            container.success(f"Ingested {upload.name}: {result.chunks} chunks")
+            known_uploads.add(upload_id)
+    st.session_state.enhanced_ingested_uploads = sorted(known_uploads)
 
 
 def main() -> None:
     init_session_state()
     service = get_demo_service()
     render_header()
-    render_sidebar(service)
-    render_metrics()
-    render_status_panels()
+    render_sidebar()
 
-    user_input = st.chat_input("Ask about Redis, OpenShift AI, or your uploaded documents...")
-    if not user_input:
-        return
+    left_col, right_col = st.columns(2)
 
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    try:
-        result = service.ask(st.session_state.session_id, user_input)
-    except Exception as exc:
-        st.error(str(exc))
-        st.code(traceback.format_exc())
-        return
+    with left_col:
+        st.subheader("Baseline Chat")
+        st.caption("Direct LLM chat using the same model and system prompt, without Redis-backed features.")
+        baseline_messages = st.container(height=420)
+        render_messages(
+            baseline_messages,
+            st.session_state.baseline_messages,
+            "Send a message to test the baseline LLM flow.",
+        )
+        with st.form("baseline_form", clear_on_submit=False):
+            st.text_area(
+                "Message",
+                key="baseline_input",
+                placeholder="Ask the baseline model a question...",
+                height=80,
+            )
+            baseline_submitted = st.form_submit_button("Send to Baseline", use_container_width=True)
+        if baseline_submitted:
+            process_baseline_submit(service)
+        if st.session_state.baseline_error:
+            message, details = st.session_state.baseline_error
+            render_error(st, message, details)
 
-    st.session_state.last_result = result
-    st.session_state.messages.append({"role": "assistant", "content": result.answer})
-    if result.cache.hit:
-        st.session_state.metrics["cache_hits"] += 1
-        st.session_state.metrics["tokens_saved"] += result.cache.tokens_saved
-        st.session_state.metrics["cost_saved"] += result.cache.cost_saved
-    st.rerun()
+    with right_col:
+        st.subheader("Redis-Enhanced Chat")
+        st.caption("Toggle Redis-backed features on or off to compare behavior in the same session.")
+        enhanced_messages = st.container(height=420)
+        render_messages(
+            enhanced_messages,
+            st.session_state.enhanced_messages,
+            "Send a message or upload a file to test the enhanced flow.",
+        )
+        with st.form("enhanced_form", clear_on_submit=False):
+            st.text_area(
+                "Message",
+                key="enhanced_input",
+                placeholder="Ask the enhanced model a question...",
+                height=80,
+            )
+            enhanced_submitted = st.form_submit_button("Send to Enhanced", use_container_width=True)
+        feature_box = st.container(border=True)
+        with feature_box:
+            st.markdown("#### Enhanced Features")
+            st.toggle("Semantic caching", key="enhanced_feature_semantic_cache")
+            st.toggle("Memory", key="enhanced_feature_memory")
+            st.toggle("RAG context", key="enhanced_feature_rag")
+            st.toggle("Routing", key="enhanced_feature_routing")
+            if st.button("Clear Enhanced Memory", use_container_width=True):
+                try:
+                    service.clear_memory(st.session_state.enhanced_session_id)
+                except Exception as exc:
+                    render_error(st, f"Unable to clear enhanced memory: {exc}", traceback.format_exc())
+                else:
+                    st.success("Enhanced memory cleared.")
+            handle_enhanced_uploads(service, st)
+            metrics = st.session_state.enhanced_metrics
+            st.caption(
+                f"Cache hits: {metrics['cache_hits']} | Tokens saved: {metrics['tokens_saved']} | "
+                f"Estimated cost saved: ${metrics['cost_saved']:.4f}"
+            )
+            render_enhanced_telemetry(st, enhanced_feature_flags())
+        if enhanced_submitted:
+            process_enhanced_submit(service)
+        if st.session_state.enhanced_error:
+            message, details = st.session_state.enhanced_error
+            render_error(st, message, details)
 
 
 if __name__ == "__main__":
