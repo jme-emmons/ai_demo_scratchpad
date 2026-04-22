@@ -1,0 +1,59 @@
+# =============================================================================
+# ArgoCD Application — ai-demo-scratchpad (application deployment)
+#
+# Watches the deploy/ folder. When the CI pipeline pushes an updated
+# kustomization.yaml (new image SHA), ArgoCD detects the diff, runs
+# `kustomize build`, and applies the result to the target namespace.
+#
+# Apply to the cluster (requires ArgoCD / OpenShift GitOps installed):
+#   oc apply -f gitops/argocd-app-deploy.yaml -n openshift-gitops
+#
+# Required one-time setup in the target namespace before first sync:
+#   oc create secret generic app-env --from-env-file=.env -n <your-namespace>
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-demo-scratchpad
+  namespace: openshift-gitops   # namespace where ArgoCD/OpenShift GitOps runs
+  labels:
+    app: ai-demo-scratchpad
+  # Ensure this Application is deleted cleanly when removed from git
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/<your-org>/ai_demo_scratchpad.git   # <-- update
+    targetRevision: main
+    path: deploy
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: <your-namespace>   # <-- update: namespace the app runs in
+
+  syncPolicy:
+    automated:
+      # Remove resources from the cluster when deleted from git
+      prune: true
+      # Revert any manual changes made directly to the cluster (drift correction)
+      selfHeal: true
+    syncOptions:
+      # Create the namespace if it does not exist
+      - CreateNamespace=true
+      # Only apply resources that are actually out of sync (faster, less noise)
+      - ApplyOutOfSyncOnly=true
+      # Use server-side apply to avoid annotation size limits on large manifests
+      - ServerSideApply=true
+
+  # Ignore differences that OpenShift injects automatically
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/template/metadata/annotations
+    - group: route.openshift.io
+      kind: Route
+      jsonPointers:
+        - /spec/host

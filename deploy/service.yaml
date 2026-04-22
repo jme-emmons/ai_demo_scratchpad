@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-demo-scratchpad
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  selector:
+    app: ai-demo-scratchpad
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8501
+      targetPort: 8501

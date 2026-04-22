@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ai-demo-scratchpad
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  to:
+    kind: Service
+    name: ai-demo-scratchpad
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

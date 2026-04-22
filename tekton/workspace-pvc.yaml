@@ -1,0 +1,14 @@
+# PersistentVolumeClaim used as the shared workspace between pipeline tasks.
+# OpenShift's default storage class is used; adjust storageClassName if needed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-demo-pipeline-pvc
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
