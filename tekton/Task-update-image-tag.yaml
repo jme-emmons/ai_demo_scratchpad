@@ -140,15 +140,10 @@ spec:
         GIT_USERNAME=$(cat "${CREDS}/username")
         GIT_PASSWORD=$(cat "${CREDS}/password")
 
-        # Write a .netrc so git uses the token automatically
-        cat > ~/.netrc <<NETRC
-machine github.com
-  login ${GIT_USERNAME}
-  password ${GIT_PASSWORD}
-machine gitlab.com
-  login ${GIT_USERNAME}
-  password ${GIT_PASSWORD}
-NETRC
+        # Write a .netrc so git uses the token automatically.
+        # Using printf avoids heredoc indentation issues in YAML block scalars.
+        printf 'machine github.com\n  login %s\n  password %s\nmachine gitlab.com\n  login %s\n  password %s\n' \
+          "${GIT_USERNAME}" "${GIT_PASSWORD}" "${GIT_USERNAME}" "${GIT_PASSWORD}" > ~/.netrc
         chmod 600 ~/.netrc
 
         # Ensure the remote is set to the HTTPS URL (in case cloned via SSH)
@@ -163,11 +158,12 @@ NETRC
           exit 0
         fi
 
-        git commit -m "ci: deploy image tag ${IMAGE_TAG}
+        COMMIT_MSG="ci: deploy image tag ${IMAGE_TAG}
 
-Automated commit by OpenShift Pipeline.
-Updated deploy/kustomization.yaml to point to the new image SHA.
-ArgoCD will detect this change and roll out the new version."
+        Automated commit by OpenShift Pipeline.
+        Updated deploy/kustomization.yaml to point to the new image SHA.
+        ArgoCD will detect this change and roll out the new version."
+        git commit -m "${COMMIT_MSG}"
 
         git push origin "HEAD:${GIT_REVISION}"
 
