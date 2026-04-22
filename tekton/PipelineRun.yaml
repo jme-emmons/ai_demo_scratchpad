@@ -1,0 +1,60 @@
+# =============================================================================
+# Example PipelineRun — fill in the params marked <-- before applying.
+#
+# Apply with:
+#   oc create -f tekton/PipelineRun.yaml
+#
+# Each run gets a unique name via generateName. The git commit SHA is
+# captured automatically by the git-clone task and used as the image tag —
+# no manual tag input is needed.
+# =============================================================================
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: ai-demo-scratchpad-run-
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  pipelineRef:
+    name: ai-demo-scratchpad-pipeline
+
+  taskRunTemplate:
+    serviceAccountName: ai-demo-pipeline-sa   # tekton/ServiceAccount.yaml
+
+  params:
+    - name: git-url
+      value: https://github.com/<your-org>/ai_demo_scratchpad.git   # <-- update
+
+    - name: git-revision
+      value: main
+
+    - name: image-registry
+      # Format: <registry-host>/<namespace>/<app-name>  (NO tag — SHA is appended)
+      value: image-registry.openshift-image-registry.svc:5000/<your-namespace>/ai-demo-scratchpad   # <-- update
+
+    - name: git-user-name
+      value: "OpenShift Pipeline Bot"
+
+    - name: git-user-email
+      value: "pipeline@openshift.local"
+
+  workspaces:
+    # Shared source workspace backed by a PVC (tekton/workspace-pvc.yaml)
+    - name: source
+      persistentVolumeClaim:
+        claimName: ai-demo-pipeline-pvc
+
+    # Docker config Secret for pushing to the image registry.
+    # For the internal OpenShift registry no extra Secret is needed if the
+    # pipeline SA has the image-pusher role — pass an empty Secret instead:
+    #   oc create secret generic registry-auth --from-literal=.dockerconfigjson='{}' \
+    #     --type=kubernetes.io/dockerconfigjson -n <your-namespace>
+    - name: registry-auth
+      secret:
+        secretName: registry-auth
+
+    # basic-auth Secret for pushing the kustomization update back to git.
+    # See tekton/Task-update-image-tag.yaml for setup instructions.
+    - name: git-credentials
+      secret:
+        secretName: git-credentials

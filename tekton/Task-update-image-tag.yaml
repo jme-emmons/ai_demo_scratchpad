@@ -1,0 +1,191 @@
+# =============================================================================
+# Tekton Task — update-image-tag
+#
+# Updates the image tag in deploy/kustomization.yaml with the git commit SHA,
+# commits the change, and pushes it back to the source branch so that ArgoCD
+# detects the diff and performs the rollout.
+#
+# Git credential secret
+# ---------------------
+# Create a Secret of type kubernetes.io/basic-auth and link it to the pipeline
+# ServiceAccount so that git can authenticate when pushing:
+#
+#   oc create secret generic git-credentials \
+#     --type=kubernetes.io/basic-auth \
+#     --from-literal=username=<github-username> \
+#     --from-literal=password=<github-personal-access-token> \
+#     -n <your-namespace>
+#
+#   oc annotate secret git-credentials \
+#     tekton.dev/git-0=https://github.com \
+#     -n <your-namespace>
+#
+#   oc secrets link ai-demo-pipeline-sa git-credentials -n <your-namespace>
+#
+# The secret is mounted as a workspace so the step can read the credentials
+# and configure git's credential store before pushing.
+#
+# SCC note
+# --------
+# The step image (ubi9/ubi-minimal) runs as the default non-root UID assigned
+# by OpenShift and is compatible with the pipelines-scc granted to the pipeline
+# ServiceAccount. No additional SCC grants are required.
+# =============================================================================
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: update-image-tag
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  description: |
+    Patches deploy/kustomization.yaml with the new image name and tag,
+    then commits and pushes the change to trigger an ArgoCD sync.
+
+  params:
+    - name: image-name
+      type: string
+      description: |
+        Fully-qualified image name WITHOUT the tag.
+        Example: image-registry.openshift-image-registry.svc:5000/<ns>/ai-demo-scratchpad
+
+    - name: image-tag
+      type: string
+      description: "New image tag — should be the full git commit SHA."
+
+    - name: git-url
+      type: string
+      description: "HTTPS URL of the git repository (used to set the push remote)."
+
+    - name: git-revision
+      type: string
+      default: main
+      description: "Branch to push the kustomization update to."
+
+    - name: git-user-name
+      type: string
+      default: "OpenShift Pipeline Bot"
+
+    - name: git-user-email
+      type: string
+      default: "pipeline@openshift.local"
+
+    - name: deploy-dir
+      type: string
+      default: deploy
+      description: "Relative path (from repo root) to the kustomize deploy directory."
+
+  workspaces:
+    - name: source
+      description: "Workspace containing the cloned source repository."
+
+    - name: git-credentials
+      description: |
+        Secret of type kubernetes.io/basic-auth mounted here.
+        Must contain 'username' and 'password' files (token for HTTPS push).
+
+  steps:
+    # -------------------------------------------------------------------------
+    # Step 1 — patch kustomization.yaml
+    # Uses only bash + sed (available in ubi-minimal). No extra installs needed.
+    # -------------------------------------------------------------------------
+    - name: patch-kustomization
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: IMAGE_NAME
+          value: $(params.image-name)
+        - name: IMAGE_TAG
+          value: $(params.image-tag)
+        - name: DEPLOY_DIR
+          value: $(params.deploy-dir)
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        KFILE="${DEPLOY_DIR}/kustomization.yaml"
+
+        echo "==> Patching ${KFILE}"
+        echo "    newName: ${IMAGE_NAME}"
+        echo "    newTag:  ${IMAGE_TAG}"
+
+        # Replace the newName and newTag lines in the images block.
+        # The sed patterns target lines that follow a '- name: ai-demo-scratchpad'
+        # entry, making the substitution safe even if there are multiple images.
+        sed -i "s|newName:.*|newName: ${IMAGE_NAME}|" "${KFILE}"
+        sed -i "s|newTag:.*|newTag: ${IMAGE_TAG}|"   "${KFILE}"
+
+        echo "==> Updated kustomization:"
+        cat "${KFILE}"
+
+    # -------------------------------------------------------------------------
+    # Step 2 — commit and push
+    # Uses git (installed in ubi9/ubi via microdnf, or use a git-enabled image).
+    # If your cluster mirrors packages internally, replace the image with one
+    # that has git pre-installed (e.g. quay.io/openshift/origin-cli:latest
+    # which bundles git and oc).
+    # -------------------------------------------------------------------------
+    - name: git-commit-and-push
+      image: quay.io/openshift/origin-cli:latest
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: GIT_USER_NAME
+          value: $(params.git-user-name)
+        - name: GIT_USER_EMAIL
+          value: $(params.git-user-email)
+        - name: GIT_REVISION
+          value: $(params.git-revision)
+        - name: GIT_URL
+          value: $(params.git-url)
+        - name: IMAGE_TAG
+          value: $(params.image-tag)
+        - name: DEPLOY_DIR
+          value: $(params.deploy-dir)
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        CREDS="$(workspaces.git-credentials.path)"
+
+        # ---- Configure git identity ----------------------------------------
+        git config user.name  "${GIT_USER_NAME}"
+        git config user.email "${GIT_USER_EMAIL}"
+
+        # ---- Configure HTTPS credentials ------------------------------------
+        # The workspace secret has 'username' and 'password' files.
+        GIT_USERNAME=$(cat "${CREDS}/username")
+        GIT_PASSWORD=$(cat "${CREDS}/password")
+
+        # Write a .netrc so git uses the token automatically
+        cat > ~/.netrc <<NETRC
+        machine github.com
+          login ${GIT_USERNAME}
+          password ${GIT_PASSWORD}
+        machine gitlab.com
+          login ${GIT_USERNAME}
+          password ${GIT_PASSWORD}
+        NETRC
+        chmod 600 ~/.netrc
+
+        # Update the remote URL to HTTPS (in case it was cloned via SSH)
+        git remote set-url origin "${GIT_URL}"
+
+        # ---- Stage, commit, push -------------------------------------------
+        git add "${DEPLOY_DIR}/kustomization.yaml"
+
+        # Exit cleanly if there is nothing to commit (idempotent re-runs)
+        if git diff --cached --quiet; then
+          echo "==> kustomization.yaml already up to date — nothing to commit."
+          exit 0
+        fi
+
+        git commit -m "ci: deploy image tag ${IMAGE_TAG}
+
+        Automated commit by OpenShift Pipeline.
+        Updated deploy/kustomization.yaml to point to the new image SHA.
+        ArgoCD will detect this change and roll out the new version."
+
+        git push origin "HEAD:${GIT_REVISION}"
+
+        echo "==> Successfully pushed image tag update to ${GIT_REVISION}"
+        echo "==> ArgoCD will sync and deploy the new image shortly."

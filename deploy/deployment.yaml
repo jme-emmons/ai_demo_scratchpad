@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-demo-scratchpad
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-demo-scratchpad
+  template:
+    metadata:
+      labels:
+        app: ai-demo-scratchpad
+    spec:
+      containers:
+        - name: ai-demo-scratchpad
+          # Image name is a placeholder — Kustomize replaces it via the
+          # images: block in kustomization.yaml (updated by the CI pipeline).
+          image: ai-demo-scratchpad:latest
+          ports:
+            - containerPort: 8501
+              protocol: TCP
+          envFrom:
+            # Mount the "app-env" Secret that holds all runtime env vars:
+            # REDIS_HOST, REDIS_PASSWORD, EMBEDDING_ENDPOINT, LLM_ENDPOINT, etc.
+            # Create it once with:
+            #   oc create secret generic app-env --from-env-file=.env -n <namespace>
+            - secretRef:
+                name: app-env
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3

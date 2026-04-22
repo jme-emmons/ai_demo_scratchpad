@@ -1,0 +1,53 @@
+# =============================================================================
+# ArgoCD Application — ai-demo-scratchpad-pipeline (Tekton resources)
+#
+# Watches the tekton/ folder. When you commit changes to Pipeline.yaml,
+# Task definitions, or the ServiceAccount, ArgoCD applies them automatically —
+# keeping your pipeline definition in sync with git.
+#
+# PipelineRun objects are excluded from sync (they are ephemeral; each run
+# is created by the trigger or manually, not managed by ArgoCD).
+#
+# Apply:
+#   oc apply -f gitops/argocd-app-tekton.yaml -n openshift-gitops
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-demo-scratchpad-pipeline
+  namespace: openshift-gitops
+  labels:
+    app: ai-demo-scratchpad
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/<your-org>/ai_demo_scratchpad.git   # <-- update
+    targetRevision: main
+    path: tekton
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Deploy Tekton resources into the same namespace as the application.
+    # Alternatively use a shared pipelines namespace if your org separates concerns.
+    namespace: <your-namespace>   # <-- update
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - ServerSideApply=true
+
+  # Never let ArgoCD manage PipelineRun objects — they are ephemeral and
+  # created outside of GitOps control (by triggers or manual oc create).
+  resource:
+    exclusions:
+      - apiGroups:
+          - tekton.dev
+        kinds:
+          - PipelineRun
+          - TaskRun

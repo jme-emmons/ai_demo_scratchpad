@@ -1,0 +1,191 @@
+# =============================================================================
+# OpenShift Pipelines — Tekton Pipeline  (GitOps edition)
+# App: ai-demo-scratchpad (Streamlit / Python)
+#
+# GitOps flow
+# -----------
+# 1. git-clone        — clone the source repo; captures the git commit SHA
+# 2. build-and-push   — buildah builds the Containerfile, pushes the image
+#                       tagged with the full git commit SHA
+# 3. update-image-tag — patches deploy/kustomization.yaml with the new SHA,
+#                       commits, and pushes back to the repo
+# 4. ArgoCD detects the commit, runs kustomize build, and rolls out the pod
+#
+# Prerequisites
+# -------------
+# • OpenShift Pipelines operator installed (Tekton v1 API)
+# • ClusterTasks available: git-clone, buildah  (ship with OpenShift Pipelines)
+# • Custom Task installed:  update-image-tag    (tekton/Task-update-image-tag.yaml)
+# • PVC for shared workspace                    (tekton/workspace-pvc.yaml)
+# • ServiceAccount with push rights             (tekton/ServiceAccount.yaml)
+# • Secret "registry-auth"  — Docker config for the image registry
+# • Secret "git-credentials" — basic-auth with username + PAT for git push
+#   (see tekton/Task-update-image-tag.yaml header for setup instructions)
+#
+# Trigger a run manually:
+#   oc create -f tekton/PipelineRun.yaml
+# =============================================================================
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: ai-demo-scratchpad-pipeline
+  labels:
+    app: ai-demo-scratchpad
+spec:
+  # ---------------------------------------------------------------------------
+  # Parameters
+  # ---------------------------------------------------------------------------
+  params:
+    - name: git-url
+      type: string
+      description: "Source repository HTTPS URL (e.g. https://github.com/org/ai_demo_scratchpad.git)"
+
+    - name: git-revision
+      type: string
+      default: main
+      description: "Branch, tag, or SHA to build"
+
+    - name: image-registry
+      type: string
+      description: |
+        Registry and namespace prefix for the built image, WITHOUT a tag.
+        Example: image-registry.openshift-image-registry.svc:5000/<namespace>/ai-demo-scratchpad
+
+    - name: git-user-name
+      type: string
+      default: "OpenShift Pipeline Bot"
+      description: "Git author name used for the kustomization commit"
+
+    - name: git-user-email
+      type: string
+      default: "pipeline@openshift.local"
+      description: "Git author email used for the kustomization commit"
+
+  # ---------------------------------------------------------------------------
+  # Workspaces
+  # ---------------------------------------------------------------------------
+  workspaces:
+    - name: source
+      description: "Shared workspace — source clone then build context"
+
+    - name: registry-auth
+      description: "Docker config Secret for pushing the built image (registry-auth)"
+
+    - name: git-credentials
+      description: "basic-auth Secret for pushing the kustomization update (git-credentials)"
+
+  # ---------------------------------------------------------------------------
+  # Tasks
+  # ---------------------------------------------------------------------------
+  tasks:
+    # -------------------------------------------------------------------------
+    # 1. Clone — also captures the exact git commit SHA used as the image tag
+    # -------------------------------------------------------------------------
+    - name: git-clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+        - name: deleteExisting
+          value: "true"
+      # Outputs:
+      #   commit — full 40-char SHA, used as the image tag downstream
+      #   url    — resolved clone URL
+
+    # -------------------------------------------------------------------------
+    # 2. Build & push — image is tagged with the full git commit SHA
+    #    Using the SHA guarantees the tag is immutable and fully traceable.
+    # -------------------------------------------------------------------------
+    - name: build-and-push
+      runAfter:
+        - git-clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: registry-auth
+      params:
+        - name: IMAGE
+          # Full image ref: <registry>/<ns>/<app>:<git-sha>
+          value: $(params.image-registry):$(tasks.git-clone.results.commit)
+        - name: DOCKERFILE
+          value: ./Containerfile
+        - name: CONTEXT
+          value: .
+        - name: FORMAT
+          value: oci
+        - name: SKIP_PUSH
+          value: "false"
+      # Outputs:
+      #   IMAGE_DIGEST — sha256 digest of the pushed image
+      #   IMAGE_URL    — full image ref including digest
+
+    # -------------------------------------------------------------------------
+    # 3. Update kustomization — GitOps deployment trigger
+    #    Patches deploy/kustomization.yaml with the new image name and SHA tag,
+    #    commits, and pushes. ArgoCD detects the commit and rolls out the pod.
+    # -------------------------------------------------------------------------
+    - name: update-image-tag
+      runAfter:
+        - build-and-push
+      taskRef:
+        # This Task is defined in tekton/Task-update-image-tag.yaml and
+        # applied to the cluster (by ArgoCD or manually).
+        kind: Task
+        name: update-image-tag
+      workspaces:
+        - name: source
+          workspace: source
+        - name: git-credentials
+          workspace: git-credentials
+      params:
+        - name: image-name
+          value: $(params.image-registry)
+        - name: image-tag
+          value: $(tasks.git-clone.results.commit)
+        - name: git-url
+          value: $(params.git-url)
+        - name: git-revision
+          value: $(params.git-revision)
+        - name: git-user-name
+          value: $(params.git-user-name)
+        - name: git-user-email
+          value: $(params.git-user-email)
+        - name: deploy-dir
+          value: deploy
+
+  # ---------------------------------------------------------------------------
+  # Results — surface key outputs to the PipelineRun for observability
+  # ---------------------------------------------------------------------------
+  results:
+    - name: git-commit
+      description: "Git commit SHA that was built and deployed"
+      value: $(tasks.git-clone.results.commit)
+    - name: image-digest
+      description: "OCI digest of the pushed image (sha256:...)"
+      value: $(tasks.build-and-push.results.IMAGE_DIGEST)
+    - name: image-url
+      description: "Full image reference including digest"
+      value: $(tasks.build-and-push.results.IMAGE_URL)

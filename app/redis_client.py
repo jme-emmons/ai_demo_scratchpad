@@ -64,6 +64,8 @@ def get_redis_client() -> redis.Redis:
     if settings.redis_ssl:
         ca_cert_path = _redis_ca_cert_path()
         kwargs["ssl_cert_reqs"] = "required"
+        if settings.redis_ssl_verify:
+            kwargs["ssl_cert_reqs"] = "none"
         if ca_cert_path:
             kwargs["ssl_ca_certs"] = ca_cert_path
         if settings.redis_ssl_check_hostname and (settings.redis_sni_hostname or ca_cert_path):
