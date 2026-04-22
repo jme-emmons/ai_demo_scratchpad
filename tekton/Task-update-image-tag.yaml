@@ -130,6 +130,11 @@ spec:
         echo "==> Updated kustomization:"
         cat "${KFILE}"
 
+        # ---- Git safe.directory ------------------------------------------------
+        # git 2.35.2+ rejects repos owned by a different UID. The workspace was
+        # cloned by the git-clone task (UID 65532); this step runs as root (0).
+        git config --global --add safe.directory "$(workspaces.source.path)"
+
         # ---- Configure git identity ----------------------------------------
         git config user.name  "${GIT_USER_NAME}"
         git config user.email "${GIT_USER_EMAIL}"
