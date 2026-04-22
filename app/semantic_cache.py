@@ -4,6 +4,8 @@ import json
 import time
 from dataclasses import dataclass
 
+from redis.exceptions import ResponseError
+
 from app.config import settings
 from app.model_clients import EmbeddingClient
 from app.utils import estimate_tokens, make_id
@@ -38,7 +40,12 @@ class SemanticCache:
         embedding = self.embedder.embed(question)
         self.store.index_name = self.index_name
         self.store.key_prefix = self.key_prefix
-        matches = self.store.search(embedding.vector, session_id=session_id, top_k=1)
+        try:
+            matches = self.store.search(embedding.vector, session_id=session_id, top_k=1)
+        except ResponseError as exc:
+            if self._is_missing_index_error(exc):
+                return CacheResult(hit=False), embedding.vector, embedding.latency_ms
+            raise
         if not matches:
             return CacheResult(hit=False), embedding.vector, embedding.latency_ms
         match = matches[0]
@@ -102,3 +109,7 @@ class SemanticCache:
         import numpy as np
 
         return np.array(vector, dtype=np.float32).tobytes()
+
+    def _is_missing_index_error(self, exc: ResponseError) -> bool:
+        message = str(exc)
+        return "No such index" in message and self.index_name in message
