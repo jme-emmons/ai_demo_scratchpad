@@ -160,37 +160,6 @@ def inject_branding_styles() -> None:
           border-color: rgba(255, 68, 56, 0.24);
         }
 
-        .panel-kicker {
-          display: block;
-          margin-bottom: 0.35rem;
-          font-size: 0.74rem;
-          font-weight: 800;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-        }
-
-        .panel-kicker.baseline {
-          color: rgba(246, 239, 229, 0.6);
-        }
-
-        .panel-kicker.enhanced {
-          color: #ff948a;
-        }
-
-        .panel-title {
-          margin: 0 0 0.35rem 0;
-          font-size: 1.45rem;
-          line-height: 1.15;
-          letter-spacing: -0.03em;
-          color: var(--redis-ink);
-        }
-
-        .panel-subtitle {
-          margin: 0 0 0.9rem 0;
-          color: var(--redis-ink-muted);
-          font-size: 0.96rem;
-        }
-
         .section-card {
           border: 1px solid var(--redis-stroke);
           background: var(--redis-panel-soft);
@@ -426,16 +395,8 @@ def main() -> None:
 
     with left_col:
         st.markdown('<div class="panel-card baseline">', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="panel-kicker baseline">Baseline</div>
-            <h3 class="panel-title">Direct LLM Chat</h3>
-            <p class="panel-subtitle">
-              A neutral baseline path that uses the same model and system prompt without Redis-backed features.
-            </p>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.subheader("Baseline LLM")
+        st.caption("A neutral baseline path that uses the same model and system prompt without Redis-backed features.")
         with st.form("baseline_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -463,16 +424,8 @@ def main() -> None:
 
     with right_col:
         st.markdown('<div class="panel-card enhanced">', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="panel-kicker enhanced">Enhanced</div>
-            <h3 class="panel-title">Redis-Powered Chat</h3>
-            <p class="panel-subtitle">
-              Enable Redis-backed features selectively to compare caching, memory, routing, and retrieval.
-            </p>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.subheader("Redis Enhanced")
+        st.caption("Enable Redis-backed features selectively to compare caching, memory, routing, and retrieval.")
         with st.form("enhanced_form", clear_on_submit=True):
             st.text_area(
                 "Message",
