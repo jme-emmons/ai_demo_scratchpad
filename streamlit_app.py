@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="Redis + OpenShift AI Defense Demo",
     page_icon=":satellite:",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -87,7 +87,19 @@ def inject_branding_styles() -> None:
         }
 
         [data-testid="stSidebar"] {
-          display: none;
+          background: linear-gradient(180deg, rgba(24, 16, 15, 0.98), rgba(18, 12, 11, 0.98));
+          border-right: 1px solid var(--redis-stroke);
+        }
+
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] p {
+          color: var(--redis-ink);
+        }
+
+        [data-testid="stSidebarCollapsedControl"] button {
+          background: rgba(255, 68, 56, 0.14);
+          border-radius: 999px;
         }
 
         .block-container {
@@ -253,6 +265,24 @@ def render_header() -> None:
     )
 
 
+def render_enhanced_sidebar(service: DemoService) -> None:
+    with st.sidebar:
+        st.markdown("## Enhanced Controls")
+        st.caption("Redis-backed feature toggles and uploads for the enhanced panel.")
+        st.toggle("Semantic caching", key="enhanced_feature_semantic_cache")
+        st.toggle("Memory", key="enhanced_feature_memory")
+        st.toggle("RAG context", key="enhanced_feature_rag")
+        st.toggle("Routing", key="enhanced_feature_routing")
+        if st.button("Clear Enhanced Memory", use_container_width=True):
+            try:
+                service.clear_memory(st.session_state.enhanced_session_id)
+            except Exception as exc:
+                render_error(st.sidebar, f"Unable to clear enhanced memory: {exc}", traceback.format_exc())
+            else:
+                st.sidebar.success("Enhanced memory cleared.")
+        handle_enhanced_uploads(service, st.sidebar)
+
+
 def render_messages(container, messages: list[dict[str, str]], empty_text: str) -> None:
     with container:
         if not messages:
@@ -389,6 +419,7 @@ def main() -> None:
     init_session_state()
     service = get_demo_service()
     inject_branding_styles()
+    render_enhanced_sidebar(service)
     render_header()
     rerun_requested = False
 
@@ -445,32 +476,11 @@ def main() -> None:
                 enhanced_updated = process_enhanced_submit(service)
             if enhanced_updated:
                 rerun_requested = True
-        feature_box = st.container()
-        with feature_box:
-            st.markdown("#### Enhanced Features")
-            toggle_cols = st.columns(4)
-            toggle_specs = [
-                ("Semantic caching", "enhanced_feature_semantic_cache"),
-                ("Memory", "enhanced_feature_memory"),
-                ("RAG context", "enhanced_feature_rag"),
-                ("Routing", "enhanced_feature_routing"),
-            ]
-            for col, (label, key) in zip(toggle_cols, toggle_specs):
-                with col:
-                    st.toggle(label, key=key)
-            if st.button("Clear Enhanced Memory", use_container_width=True):
-                try:
-                    service.clear_memory(st.session_state.enhanced_session_id)
-                except Exception as exc:
-                    render_error(st, f"Unable to clear enhanced memory: {exc}", traceback.format_exc())
-                else:
-                    st.success("Enhanced memory cleared.")
-            handle_enhanced_uploads(service, st)
-            metrics = st.session_state.enhanced_metrics
-            st.caption(
-                f"Cache hits: {metrics['cache_hits']} | Tokens saved: {metrics['tokens_saved']} | "
-                f"Estimated cost saved: ${metrics['cost_saved']:.4f}"
-            )
+        metrics = st.session_state.enhanced_metrics
+        st.caption(
+            f"Cache hits: {metrics['cache_hits']} | Tokens saved: {metrics['tokens_saved']} | "
+            f"Estimated cost saved: ${metrics['cost_saved']:.4f}"
+        )
         render_enhanced_telemetry(st.container(), enhanced_feature_flags())
         st.markdown("</div>", unsafe_allow_html=True)
         if st.session_state.enhanced_error:
