@@ -34,6 +34,7 @@ def init_session_state() -> None:
         "enhanced_error": None,
         "baseline_input": "",
         "enhanced_input": "",
+        "baseline_metrics": {"total_tokens": 0},
         "enhanced_session_id": uuid.uuid4().hex[:12],
         "enhanced_metrics": {"cache_hits": 0, "tokens_saved": 0, "cost_saved": 0.0},
         "enhanced_feature_semantic_cache": False,
@@ -342,7 +343,6 @@ def render_enhanced_telemetry(container, features: FeatureFlags) -> None:
     container.write(f"**Estimated total tokens:** {result.total_tokens}")
     if features.routing:
         container.write(f"**Route selected:** `{result.route.route}`")
-        container.write(f"**Route rationale:** {result.route.rationale}")
     if features.semantic_cache:
         container.write(f"**Cache status:** {'Hit' if result.used_cache else 'Miss'}")
         if result.cache.hit:
@@ -355,8 +355,6 @@ def render_enhanced_telemetry(container, features: FeatureFlags) -> None:
     if features.memory:
         memory = result.memory_summary
         container.write(f"**Memory turns retained:** {memory['turns']}")
-        container.write(f"**Memory token estimate:** {memory['estimated_tokens']}")
-        container.caption(memory["preview"] or "No memory yet.")
     if features.rag_context:
         container.write("**Retrieved evidence:**")
         if result.retrieval_matches:
@@ -376,7 +374,8 @@ def render_baseline_telemetry(container) -> None:
 
     container.markdown("#### Telemetry")
     container.write(f"**LLM latency:** {result.llm_latency_ms:.1f} ms")
-    container.write(f"**Estimated total tokens:** {result.total_tokens}")
+    container.write(f"**Last reply tokens:** {result.total_tokens}")
+    container.write(f"**Total session tokens:** {st.session_state.baseline_metrics['total_tokens']}")
 
 
 def enhanced_feature_flags() -> FeatureFlags:
@@ -401,6 +400,7 @@ def process_baseline_submit(service: DemoService) -> None:
     st.session_state.baseline_last_result = result
     st.session_state.baseline_messages.append({"role": "assistant", "content": result.answer})
     st.session_state.baseline_error = None
+    st.session_state.baseline_metrics["total_tokens"] += result.total_tokens
     return True
 
 
@@ -515,12 +515,14 @@ def main() -> None:
                 enhanced_updated = process_enhanced_submit(service)
             if enhanced_updated:
                 rerun_requested = True
+        features = enhanced_feature_flags()
         metrics = st.session_state.enhanced_metrics
-        st.caption(
-            f"Cache hits: {metrics['cache_hits']} | Tokens saved: {metrics['tokens_saved']} | "
-            f"Estimated cost saved: ${metrics['cost_saved']:.4f}"
-        )
-        render_enhanced_telemetry(st.container(), enhanced_feature_flags())
+        if features.semantic_cache:
+            st.caption(
+                f"Cache hits: {metrics['cache_hits']} | Tokens saved: {metrics['tokens_saved']} | "
+                f"Estimated cost saved: ${metrics['cost_saved']:.4f}"
+            )
+        render_enhanced_telemetry(st.container(), features)
         st.markdown("</div>", unsafe_allow_html=True)
         if st.session_state.enhanced_error:
             message, details = st.session_state.enhanced_error
