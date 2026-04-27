@@ -36,7 +36,7 @@ def init_session_state() -> None:
         "enhanced_input": "",
         "baseline_metrics": {"total_tokens": 0},
         "enhanced_session_id": uuid.uuid4().hex[:12],
-        "enhanced_metrics": {"cache_hits": 0, "tokens_saved": 0, "cost_saved": 0.0},
+        "enhanced_metrics": {"cache_hits": 0, "tokens_saved": 0, "cost_saved": 0.0, "total_tokens": 0},
         "enhanced_feature_semantic_cache": False,
         "enhanced_feature_memory": False,
         "enhanced_feature_rag": False,
@@ -341,7 +341,8 @@ def render_enhanced_telemetry(container, features: FeatureFlags) -> None:
     response_latency_ms = result.llm_latency_ms + result.embedding_latency_ms
     container.markdown("#### Telemetry")
     container.write(f"**Response latency:** {response_latency_ms:.1f} ms")
-    container.write(f"**Estimated total tokens:** {result.total_tokens}")
+    container.write(f"**Last reply tokens:** {result.total_tokens}")
+    container.write(f"**Total session tokens:** {st.session_state.enhanced_metrics['total_tokens']}")
     if features.semantic_cache:
         container.write(f"**Cache status:** {'Hit' if result.used_cache else 'Miss'}")
         metrics = st.session_state.enhanced_metrics
@@ -350,11 +351,6 @@ def render_enhanced_telemetry(container, features: FeatureFlags) -> None:
             f"{metrics['tokens_saved']} tokens saved | "
             f"${metrics['cost_saved']:.4f} estimated cost saved"
         )
-        if result.cache.hit:
-            container.success(
-                f"Semantic cache hit. Saved ~{result.cache.tokens_saved} tokens and "
-                f"${result.cache.cost_saved:.4f}."
-            )
     if features.memory:
         memory = result.memory_summary
         container.write(f"**Memory turns retained:** {memory['turns']}")
@@ -427,6 +423,7 @@ def process_enhanced_submit(service: DemoService) -> None:
     st.session_state.enhanced_last_result = result
     st.session_state.enhanced_messages.append({"role": "assistant", "content": result.answer})
     st.session_state.enhanced_error = None
+    st.session_state.enhanced_metrics["total_tokens"] += result.total_tokens
     if result.cache.hit:
         st.session_state.enhanced_metrics["cache_hits"] += 1
         st.session_state.enhanced_metrics["tokens_saved"] += result.cache.tokens_saved
