@@ -238,16 +238,14 @@ def render_header() -> None:
     st.markdown(
         f"""
         <div class="brand-shell">
-          <p class="brand-title">Redis Mission Assistant</p>
+          <p class="brand-title">Redis + OpenShift Mission Assistant</p>
           <p class="brand-subtitle">
-            Compare a direct baseline LLM experience with a Redis-enhanced workflow using a Redis-led interface
-            and restrained Red Hat accents for enterprise framing.
+            Compare a direct baseline LLM experience with a Redis-enhanced workflow built & hosted on OpenShift AI.
           </p>
           <div class="brand-chip-row">
-            <span class="brand-chip"><strong>LLM</strong> {settings.llm_api_format}</span>
-            <span class="brand-chip"><strong>Embeddings</strong> {settings.embedding_api_format}</span>
-            <span class="brand-chip"><strong>Vector Index</strong> {settings.vector_index_name}</span>
-            <span class="brand-chip"><strong>Enhanced Session</strong> {st.session_state.enhanced_session_id}</span>
+            <span class="brand-chip"><strong>LLM</strong> {settings.llm_model}</span>
+            <span class="brand-chip"><strong>Embeddings</strong> {settings.embedding_model}</span>
+            <span class="brand-chip"><strong>Session ID</strong> {st.session_state.enhanced_session_id}</span>
           </div>
         </div>
         """,
