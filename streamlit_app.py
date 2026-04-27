@@ -324,22 +324,23 @@ def enhanced_feature_flags() -> FeatureFlags:
 def process_baseline_submit(service: DemoService) -> None:
     prompt = st.session_state.baseline_input.strip()
     if not prompt:
-        return
+        return False
     st.session_state.baseline_messages.append({"role": "user", "content": prompt})
     try:
         result = service.ask(session_id="baseline", question=prompt, features=FeatureFlags())
     except Exception as exc:
         st.session_state.baseline_error = (f"Unable to get a baseline response: {exc}", traceback.format_exc())
-        return
+        return True
     st.session_state.baseline_last_result = result
     st.session_state.baseline_messages.append({"role": "assistant", "content": result.answer})
     st.session_state.baseline_error = None
+    return True
 
 
 def process_enhanced_submit(service: DemoService) -> None:
     prompt = st.session_state.enhanced_input.strip()
     if not prompt:
-        return
+        return False
     features = enhanced_feature_flags()
     st.session_state.enhanced_messages.append({"role": "user", "content": prompt})
     try:
@@ -350,7 +351,7 @@ def process_enhanced_submit(service: DemoService) -> None:
         )
     except Exception as exc:
         st.session_state.enhanced_error = (f"Unable to get an enhanced response: {exc}", traceback.format_exc())
-        return
+        return True
     st.session_state.enhanced_last_result = result
     st.session_state.enhanced_messages.append({"role": "assistant", "content": result.answer})
     st.session_state.enhanced_error = None
@@ -358,6 +359,7 @@ def process_enhanced_submit(service: DemoService) -> None:
         st.session_state.enhanced_metrics["cache_hits"] += 1
         st.session_state.enhanced_metrics["tokens_saved"] += result.cache.tokens_saved
         st.session_state.enhanced_metrics["cost_saved"] += result.cache.cost_saved
+    return True
 
 
 def handle_enhanced_uploads(service: DemoService, container) -> None:
@@ -397,7 +399,12 @@ def main() -> None:
         st.markdown('<div class="panel-card baseline">', unsafe_allow_html=True)
         st.subheader("Baseline LLM")
         st.caption("A neutral baseline path that uses the same model and system prompt without Redis-backed features.")
-        baseline_transcript_slot = st.empty()
+        baseline_messages = st.container(height=420)
+        render_messages(
+            baseline_messages,
+            st.session_state.baseline_messages,
+            "Send a message to test the baseline LLM flow.",
+        )
         with st.form("baseline_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -408,14 +415,9 @@ def main() -> None:
             baseline_submitted = st.form_submit_button("Send to Baseline", use_container_width=True)
         if baseline_submitted:
             with st.spinner("Baseline chat is generating a response..."):
-                process_baseline_submit(service)
-        with baseline_transcript_slot.container():
-            baseline_messages = st.container(height=420)
-            render_messages(
-                baseline_messages,
-                st.session_state.baseline_messages,
-                "Send a message to test the baseline LLM flow.",
-            )
+                baseline_updated = process_baseline_submit(service)
+            if baseline_updated:
+                st.rerun()
         if st.session_state.baseline_error:
             message, details = st.session_state.baseline_error
             render_error(st, message, details)
@@ -428,7 +430,12 @@ def main() -> None:
         st.markdown('<div class="panel-card enhanced">', unsafe_allow_html=True)
         st.subheader("Redis Enhanced")
         st.caption("Enable Redis-backed features selectively to compare caching, memory, routing, and retrieval.")
-        enhanced_transcript_slot = st.empty()
+        enhanced_messages = st.container(height=420)
+        render_messages(
+            enhanced_messages,
+            st.session_state.enhanced_messages,
+            "Send a message or upload a file to test the enhanced flow.",
+        )
         with st.form("enhanced_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -439,14 +446,9 @@ def main() -> None:
             enhanced_submitted = st.form_submit_button("Send to Enhanced", use_container_width=True)
         if enhanced_submitted:
             with st.spinner("Enhanced chat is processing with the selected features..."):
-                process_enhanced_submit(service)
-        with enhanced_transcript_slot.container():
-            enhanced_messages = st.container(height=420)
-            render_messages(
-                enhanced_messages,
-                st.session_state.enhanced_messages,
-                "Send a message or upload a file to test the enhanced flow.",
-            )
+                enhanced_updated = process_enhanced_submit(service)
+            if enhanced_updated:
+                st.rerun()
         st.markdown('<div class="section-card controls">', unsafe_allow_html=True)
         feature_box = st.container()
         with feature_box:
