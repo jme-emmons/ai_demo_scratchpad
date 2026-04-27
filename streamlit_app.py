@@ -53,6 +53,26 @@ def render_error(container, message: str, details: str) -> None:
         st.code(details)
 
 
+def render_success(container, message: str) -> None:
+    container.markdown(
+        f"""
+        <div style="
+            border-left: 4px solid var(--redis-primary);
+            border: 1px solid rgba(255, 68, 56, 0.18);
+            background: linear-gradient(135deg, rgba(255, 68, 56, 0.16), rgba(255, 68, 56, 0.06));
+            color: var(--redis-ink);
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            margin-top: 0.75rem;
+            font-weight: 600;
+        ">
+            {message}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def inject_branding_styles() -> None:
     st.markdown(
         """
@@ -429,7 +449,7 @@ def handle_enhanced_uploads(service: DemoService, container) -> None:
             render_error(container, f"Unable to ingest {upload.name}.", traceback.format_exc())
             break
         else:
-            container.success(f"Ingested {upload.name}: {result.chunks} chunks")
+            render_success(container, f"Ingested {upload.name}: {result.chunks} chunks")
             known_uploads.add(upload_id)
     st.session_state.enhanced_ingested_uploads = sorted(known_uploads)
 
