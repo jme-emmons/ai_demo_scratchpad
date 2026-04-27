@@ -397,12 +397,7 @@ def main() -> None:
         st.markdown('<div class="panel-card baseline">', unsafe_allow_html=True)
         st.subheader("Baseline LLM")
         st.caption("A neutral baseline path that uses the same model and system prompt without Redis-backed features.")
-        baseline_messages = st.container(height=420)
-        render_messages(
-            baseline_messages,
-            st.session_state.baseline_messages,
-            "Send a message to test the baseline LLM flow.",
-        )
+        baseline_transcript_slot = st.empty()
         with st.form("baseline_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -414,6 +409,13 @@ def main() -> None:
         if baseline_submitted:
             with st.spinner("Baseline chat is generating a response..."):
                 process_baseline_submit(service)
+        with baseline_transcript_slot.container():
+            baseline_messages = st.container(height=420)
+            render_messages(
+                baseline_messages,
+                st.session_state.baseline_messages,
+                "Send a message to test the baseline LLM flow.",
+            )
         if st.session_state.baseline_error:
             message, details = st.session_state.baseline_error
             render_error(st, message, details)
@@ -426,12 +428,7 @@ def main() -> None:
         st.markdown('<div class="panel-card enhanced">', unsafe_allow_html=True)
         st.subheader("Redis Enhanced")
         st.caption("Enable Redis-backed features selectively to compare caching, memory, routing, and retrieval.")
-        enhanced_messages = st.container(height=420)
-        render_messages(
-            enhanced_messages,
-            st.session_state.enhanced_messages,
-            "Send a message or upload a file to test the enhanced flow.",
-        )
+        enhanced_transcript_slot = st.empty()
         with st.form("enhanced_form", clear_on_submit=True):
             st.text_area(
                 "Message",
@@ -443,6 +440,13 @@ def main() -> None:
         if enhanced_submitted:
             with st.spinner("Enhanced chat is processing with the selected features..."):
                 process_enhanced_submit(service)
+        with enhanced_transcript_slot.container():
+            enhanced_messages = st.container(height=420)
+            render_messages(
+                enhanced_messages,
+                st.session_state.enhanced_messages,
+                "Send a message or upload a file to test the enhanced flow.",
+            )
         st.markdown('<div class="section-card controls">', unsafe_allow_html=True)
         feature_box = st.container()
         with feature_box:
