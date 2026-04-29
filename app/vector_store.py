@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 from redisvl.index import SearchIndex
 from redisvl.query import CountQuery, FilterQuery, VectorQuery
 from redisvl.query.filter import Tag
@@ -81,7 +82,7 @@ class RedisVectorStore:
                     "source": source,
                     "session_id": session_id,
                     "created_at": created_at,
-                    "embedding": vector,
+                    "embedding": np.array(vector, dtype=np.float32).tobytes(),
                 }
             ],
             id_field="chunk_id",
