@@ -11,7 +11,7 @@ resources:
 #
 # The pipeline runs:
 #   sed -i "s|newName: quay.io/cmays20/ai-demo-scratchpad
-#   sed -i "s|newTag: a92e868165f8acb5da3a45353102c20cb1a41d55
+#   sed -i "s|newTag: d29f6b798508b2ac86f50410b2f2f111d64f2534
 #
 # ArgoCD detects the git commit, syncs this file, and rolls out the new image.
 # Do NOT manually edit newTag in a GitOps workflow — let the pipeline do it.
@@ -19,4 +19,4 @@ resources:
 images:
   - name: ai-demo-scratchpad
     newName: quay.io/cmays20/ai-demo-scratchpad
-    newTag: a92e868165f8acb5da3a45353102c20cb1a41d55
+    newTag: d29f6b798508b2ac86f50410b2f2f111d64f2534
