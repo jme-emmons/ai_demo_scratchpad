@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
-from redis.commands.search.field import NumericField, TagField, TextField, VectorField
-from redis.commands.search.index_definition import IndexDefinition, IndexType
-from redis.commands.search.query import Query
+from redisvl.index import SearchIndex
+from redisvl.query import CountQuery, FilterQuery, VectorQuery
+from redisvl.query.filter import Tag
 
 from app.config import settings
 from app.redis_client import get_redis_client
@@ -22,36 +21,46 @@ class SearchMatch:
 
 
 class RedisVectorStore:
-    def __init__(self) -> None:
+    def __init__(self, index_name: str | None = None, key_prefix: str = "doc") -> None:
         self.redis = get_redis_client()
-        self.index_name = settings.vector_index_name
-        self.key_prefix = "doc:"
+        self.index_name = index_name or settings.vector_index_name
+        self.key_prefix = key_prefix
+        self.index = SearchIndex.from_dict(
+            self._schema(),
+            redis_client=self.redis,
+            validate_on_load=True,
+        )
+
+    def _schema(self) -> dict:
+        return {
+            "index": {
+                "name": self.index_name,
+                "prefix": self.key_prefix,
+                "storage_type": "hash",
+            },
+            "fields": [
+                {"name": "chunk_id", "type": "tag"},
+                {"name": "text", "type": "text"},
+                {"name": "title", "type": "text"},
+                {"name": "source", "type": "text"},
+                {"name": "session_id", "type": "tag"},
+                {"name": "created_at", "type": "numeric"},
+                {
+                    "name": "embedding",
+                    "type": "vector",
+                    "attrs": {
+                        "algorithm": "hnsw",
+                        "dims": settings.vector_dimension,
+                        "distance_metric": settings.vector_distance_metric.lower(),
+                        "datatype": "float32",
+                    },
+                },
+            ],
+        }
 
     def ensure_index(self) -> None:
-        try:
-            self.redis.ft(self.index_name).info()
-            return
-        except Exception:
-            pass
-
-        schema = (
-            TextField("text"),
-            TextField("title"),
-            TextField("source"),
-            TagField("session_id"),
-            NumericField("created_at"),
-            VectorField(
-                "embedding",
-                "HNSW",
-                {
-                    "TYPE": "FLOAT32",
-                    "DIM": settings.vector_dimension,
-                    "DISTANCE_METRIC": settings.vector_distance_metric,
-                },
-            ),
-        )
-        definition = IndexDefinition(prefix=[self.key_prefix], index_type=IndexType.HASH)
-        self.redis.ft(self.index_name).create_index(schema, definition=definition)
+        if not self.index.exists():
+            self.index.create()
 
     def upsert_chunk(
         self,
@@ -63,51 +72,52 @@ class RedisVectorStore:
         created_at: int,
         vector: list[float],
     ) -> None:
-        vector_bytes = np.array(vector, dtype=np.float32).tobytes()
-        self.redis.hset(
-            chunk_key,
-            mapping={
-                "text": text,
-                "title": title,
-                "source": source,
-                "session_id": session_id,
-                "created_at": created_at,
-                "embedding": vector_bytes,
-            },
+        self.index.load(
+            [
+                {
+                    "chunk_id": chunk_key,
+                    "text": text,
+                    "title": title,
+                    "source": source,
+                    "session_id": session_id,
+                    "created_at": created_at,
+                    "embedding": vector,
+                }
+            ],
+            id_field="chunk_id",
+            ttl=settings.session_ttl_seconds,
         )
 
     def search(self, vector: list[float], session_id: str | None = None, top_k: int = 4) -> list[SearchMatch]:
-        query_vector = np.array(vector, dtype=np.float32).tobytes()
-        base_filter = "*"
-        if session_id:
-            base_filter = f"@session_id:{{{session_id}}}"
-        query = (
-            Query(f"{base_filter}=>[KNN {top_k} @embedding $vector AS score]")
-            .sort_by("score")
-            .return_fields("score", "text", "title", "source")
-            .paging(0, top_k)
-            .dialect(2)
+        session_filter = Tag("session_id") == session_id if session_id else None
+        query = VectorQuery(
+            vector=vector,
+            vector_field_name="embedding",
+            return_fields=["chunk_id", "text", "title", "source", "vector_distance"],
+            filter_expression=session_filter,
+            num_results=top_k,
+            dtype="float32",
         )
-        results = self.redis.ft(self.index_name).search(query, {"vector": query_vector})
+        results = self.index.query(query)
         matches: list[SearchMatch] = []
-        for doc in results.docs:
+        for doc in results:
+            chunk_id = str(doc["chunk_id"])
             matches.append(
                 SearchMatch(
-                    key=doc.id,
-                    score=float(doc.score),
-                    text=doc.text,
-                    title=getattr(doc, "title", ""),
-                    source=getattr(doc, "source", ""),
-                    chunk_id=doc.id,
+                    key=self.index.key(chunk_id),
+                    score=float(doc.get("vector_distance", 0.0)),
+                    text=str(doc.get("text", "")),
+                    title=str(doc.get("title", "")),
+                    source=str(doc.get("source", "")),
+                    chunk_id=chunk_id,
                 )
             )
         return matches
 
     def get_index_stats(self) -> dict[str, str]:
-        try:
-            info = self.redis.ft(self.index_name).info()
-        except Exception:
+        if not self.index.exists():
             return {"status": "missing"}
+        info = self.index.info()
         return {
             "status": "ready",
             "num_docs": str(info.get("num_docs", "0")),
@@ -115,10 +125,17 @@ class RedisVectorStore:
         }
 
     def flush_session_docs(self, session_id: str) -> int:
-        keys = self.redis.keys(f"{self.key_prefix}{session_id}:*")
-        if not keys:
+        query = FilterQuery(
+            filter_expression=Tag("session_id") == session_id,
+            return_fields=["chunk_id"],
+            num_results=10000,
+        )
+        results = self.index.query(query)
+        ids = [str(doc["chunk_id"]) for doc in results]
+        if not ids:
             return 0
-        return self.redis.delete(*keys)
+        return int(self.index.drop_documents(ids))
 
     def session_has_docs(self, session_id: str) -> bool:
-        return next(self.redis.scan_iter(f"{self.key_prefix}{session_id}:*"), None) is not None
+        query = CountQuery(filter_expression=Tag("session_id") == session_id)
+        return bool(self.index.query(query))

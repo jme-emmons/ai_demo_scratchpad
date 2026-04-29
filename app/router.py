@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from redisvl.extensions.router import Route
+from redisvl.extensions.router import SemanticRouter as RedisVLSemanticRouter
+
 from app.config import settings
-from app.model_clients import EmbeddingClient
+from app.redis_client import get_redis_client
+from app.redisvl_helpers import get_redisvl_vectorizer
 from app.utils import normalize_text
 
 
@@ -16,7 +20,6 @@ class RouteDecision:
 
 class SemanticRouter:
     def __init__(self) -> None:
-        self.embedder = EmbeddingClient()
         self.examples = {
             "rag": [
                 "Summarize the uploaded briefing",
@@ -34,49 +37,44 @@ class SemanticRouter:
                 "Tell me how to bypass military controls",
             ],
         }
-        self.prototype_vectors: dict[str, list[float]] = {}
-
-    def _ensure_prototypes(self) -> None:
-        if self.prototype_vectors:
-            return
-        for route, samples in self.examples.items():
-            vectors = [self.embedder.embed(sample).vector for sample in samples]
-            averaged = [sum(values) / len(values) for values in zip(*vectors)]
-            self.prototype_vectors[route] = averaged
+        self.router = RedisVLSemanticRouter(
+            name="demo:semantic-router",
+            routes=[
+                Route(name=route, references=samples, distance_threshold=2.0)
+                for route, samples in self.examples.items()
+            ],
+            vectorizer=get_redisvl_vectorizer(),
+            redis_client=get_redis_client(),
+            overwrite=False,
+        )
 
     def decide(self, text: str, has_documents: bool) -> RouteDecision:
         clean = normalize_text(text).lower()
         if any(term in clean for term in ["weapon", "explosive", "bypass", "attack instructions", "classified"]):
             return RouteDecision("guardrail", 0.0, "Keyword guardrail detected a clearly unsafe or disallowed request.")
 
-        self._ensure_prototypes()
-        query_vector = self.embedder.embed(text).vector
-        scores = {}
-        for route, vector in self.prototype_vectors.items():
-            score = self._cosine_distance(query_vector, vector)
-            scores[route] = score
-
-        if not has_documents and scores.get("rag", 1.0) < settings.semantic_route_distance_threshold:
+        matches = self.router.route_many(statement=text, max_k=1)
+        if not matches:
             return RouteDecision(
                 "general",
-                scores["general"],
+                1.0,
+                "No semantic route matched strongly enough, so the request fell back to general Q&A.",
+            )
+
+        match = matches[0]
+        route = match.name or "general"
+        score = float(match.distance or 1.0)
+
+        if not has_documents and route == "rag" and score < settings.semantic_route_distance_threshold:
+            return RouteDecision(
+                "general",
+                score,
                 "The prompt looked document-centric, but no uploaded corpus is available, so it fell back to general Q&A.",
             )
 
-        route = min(scores, key=scores.get)
         rationale = {
             "rag": "The prompt is semantically closest to document-grounded retrieval and answer generation.",
             "general": "The prompt is best handled as a general platform or architecture question.",
             "guardrail": "The prompt is semantically close to the protected out-of-scope bucket.",
         }[route]
-        return RouteDecision(route=route, score=scores[route], rationale=rationale)
-
-    @staticmethod
-    def _cosine_distance(left: list[float], right: list[float]) -> float:
-        numerator = sum(a * b for a, b in zip(left, right))
-        left_norm = sum(a * a for a in left) ** 0.5
-        right_norm = sum(b * b for b in right) ** 0.5
-        if not left_norm or not right_norm:
-            return 1.0
-        similarity = numerator / (left_norm * right_norm)
-        return 1 - similarity
+        return RouteDecision(route=route, score=score, rationale=rationale)
