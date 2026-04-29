@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from redisvl.extensions.message_history import MessageHistory
 
+from app.config import settings
 from app.redis_client import get_redis_client
 from app.utils import estimate_tokens, normalize_text
 
