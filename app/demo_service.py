@@ -181,7 +181,7 @@ class DemoService:
                 used_cache=False,
             )
 
-        if features.semantic_cache and cache_result.hit and route.route == "general":
+        if features.semantic_cache and cache_result.hit and route.route != "guardrail":
             if features.memory:
                 self.memory.append(session_id, "user", question)
                 self.memory.append(session_id, "assistant", cache_result.answer or "")
@@ -232,7 +232,7 @@ class DemoService:
             self.memory.append(session_id, "user", question)
             self.memory.append(session_id, "assistant", generation.text)
             memory_summary = self.memory.summary(session_id)
-        if features.semantic_cache and route.route == "general":
+        if features.semantic_cache and route.route != "guardrail":
             self.cache.store_answer(
                 session_id=session_id,
                 question=question,

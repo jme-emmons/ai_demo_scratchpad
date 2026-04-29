@@ -305,6 +305,15 @@ def render_header() -> None:
     )
 
 
+def clear_chat_windows() -> None:
+    st.session_state.baseline_messages = []
+    st.session_state.enhanced_messages = []
+    st.session_state.baseline_last_result = None
+    st.session_state.enhanced_last_result = None
+    st.session_state.baseline_error = None
+    st.session_state.enhanced_error = None
+
+
 def render_enhanced_sidebar(service: DemoService) -> None:
     with st.sidebar:
         st.markdown("## Enhanced Controls")
@@ -320,6 +329,9 @@ def render_enhanced_sidebar(service: DemoService) -> None:
                 render_error(st.sidebar, f"Unable to clear enhanced memory: {exc}", traceback.format_exc())
             else:
                 st.sidebar.success("Enhanced memory cleared.")
+        if st.button("Clear Chat Windows", use_container_width=True):
+            clear_chat_windows()
+            st.rerun()
         handle_enhanced_uploads(service, st.sidebar)
 
 
