@@ -214,13 +214,17 @@ class DemoService:
                 f"{memory_block}"
                 f"Retrieved context:\n{context}\n\n"
                 f"User question:\n{question}\n\n"
-                "Answer using the retrieved context first. If the context is insufficient, say so clearly."
+                "Answer using the retrieved context first. Use relevant facts from the conversation memory to resolve"
+                " a lack of clarity, include logical jumps base on synonyms or turns of phrase."
+                " If the retrieved context still does not"
+                " support the answer, say so clearly."
             )
         elif features.memory and memory_context:
             prompt = (
                 f"Conversation memory:\n{memory_context}\n\n"
                 f"User question:\n{question}\n\n"
-                "Answer as a Redis and OpenShift AI solution assistant for an enterprise audience."
+                "Use the conversation memory as factual user-provided context. You may make straightforward inferences"
+                " from it, unless the user says otherwise."
             )
 
         try:
