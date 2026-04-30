@@ -38,6 +38,7 @@ def init_session_state() -> None:
         "enhanced_session_id": uuid.uuid4().hex[:12],
         "enhanced_metrics": {
             "cache_hits": 0,
+            "avoided_calls": 0,
             "tokens_saved": 0,
             "cost_saved": 0.0,
             "total_tokens": 0,
@@ -374,7 +375,8 @@ def render_enhanced_telemetry(container, features: FeatureFlags) -> None:
         container.write(f"**Cache hits:** {metrics['cache_hits']}")
     if features.semantic_cache or features.routing:
         container.write(
-            f"**LLM savings:** {metrics['tokens_saved']} tokens saved | "
+            f"**LLM savings:** {metrics['avoided_calls']} avoided calls | "
+            f"{metrics['tokens_saved']} tokens saved | "
             f"${metrics['cost_saved']:.4f} estimated cost saved"
         )
     if features.memory:
@@ -452,6 +454,7 @@ def process_enhanced_submit(service: DemoService) -> None:
     if result.llm_latency_ms > 0:
         st.session_state.enhanced_metrics["total_tokens"] += result.total_tokens
     else:
+        st.session_state.enhanced_metrics["avoided_calls"] += 1
         if result.cache.hit:
             st.session_state.enhanced_metrics["tokens_saved"] += result.cache.tokens_saved
             st.session_state.enhanced_metrics["cost_saved"] += result.cache.cost_saved

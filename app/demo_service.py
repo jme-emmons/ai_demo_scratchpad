@@ -164,8 +164,9 @@ class DemoService:
 
         if route.route == "guardrail":
             answer = (
-                "I can’t help with unsafe or prohibited requests. "
-                "I can help explain secure AI application patterns, enterprise guardrails, or safe platform design instead."
+                "I can’t help with bypassing eligibility rules, accessing confidential counseling information, "
+                "or misusing military-family benefits. I can help explain the official eligibility rules, "
+                "privacy boundaries, or approved resources instead."
             )
             total_tokens = estimate_tokens(question + answer)
             if features.memory:
