@@ -1,5 +1,6 @@
 streamlit>=1.44.0
 redis>=5.0.4
+redisvl>=0.9.0
 numpy>=1.26.0
 requests>=2.31.0
 openai>=1.30.0

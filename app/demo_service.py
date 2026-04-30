@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from app.semantic_cache import SemanticCache
 
 
-SYSTEM_PROMPT = """You are a helpful enterprise AI assistant for US military resources and benefits.
+SYSTEM_PROMPT = """You are a helpful government services AI assistant.
 Answer clearly, concisely, and professionally.
 If retrieval context is provided, ground the answer in that context and mention sources.
 If the request is unsafe, out of scope, or asks for prohibited assistance, refuse briefly and redirect toward safe, policy-aligned help.
@@ -111,6 +111,9 @@ class DemoService:
     def clear_memory(self, session_id: str) -> None:
         self.memory.clear(session_id)
 
+    def clear_semantic_cache(self) -> None:
+        self.cache.clear()
+
     def ask(
         self,
         session_id: str,
@@ -161,8 +164,9 @@ class DemoService:
 
         if route.route == "guardrail":
             answer = (
-                "I can’t help with unsafe or prohibited requests. "
-                "I can help explain secure AI application patterns, enterprise guardrails, or safe platform design instead."
+                "I can’t help with bypassing eligibility rules, accessing confidential counseling information, "
+                "or misusing military-family benefits. I can help explain the official eligibility rules, "
+                "privacy boundaries, or approved resources instead."
             )
             total_tokens = estimate_tokens(question + answer)
             if features.memory:
@@ -181,7 +185,7 @@ class DemoService:
                 used_cache=False,
             )
 
-        if features.semantic_cache and cache_result.hit and route.route == "general":
+        if features.semantic_cache and cache_result.hit and route.route != "guardrail":
             if features.memory:
                 self.memory.append(session_id, "user", question)
                 self.memory.append(session_id, "assistant", cache_result.answer or "")
@@ -210,13 +214,17 @@ class DemoService:
                 f"{memory_block}"
                 f"Retrieved context:\n{context}\n\n"
                 f"User question:\n{question}\n\n"
-                "Answer using the retrieved context first. If the context is insufficient, say so clearly."
+                "Answer using the retrieved context first. Use relevant facts from the conversation memory to resolve"
+                " a lack of clarity, include logical jumps base on synonyms or turns of phrase."
+                " If the retrieved context still does not"
+                " support the answer, say so clearly."
             )
         elif features.memory and memory_context:
             prompt = (
                 f"Conversation memory:\n{memory_context}\n\n"
                 f"User question:\n{question}\n\n"
-                "Answer as a Redis and OpenShift AI solution assistant for an enterprise audience."
+                "Use the conversation memory as factual user-provided context. You may make straightforward inferences"
+                " from it, unless the user says otherwise."
             )
 
         try:
@@ -232,7 +240,7 @@ class DemoService:
             self.memory.append(session_id, "user", question)
             self.memory.append(session_id, "assistant", generation.text)
             memory_summary = self.memory.summary(session_id)
-        if features.semantic_cache and route.route == "general":
+        if features.semantic_cache and route.route != "guardrail":
             self.cache.store_answer(
                 session_id=session_id,
                 question=question,
