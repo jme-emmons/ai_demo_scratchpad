@@ -51,7 +51,7 @@ class ConversationMemory:
             if keys:
                 history._index.expire_keys(keys, settings.session_ttl_seconds)  # type: ignore[attr-defined]
 
-    def get_recent(self, session_id: str, limit: int = 6) -> list[MemoryEntry]:
+    def get_recent(self, session_id: str, limit: int = 8) -> list[MemoryEntry]:
         history = self._history(session_id)
         raw_entries = history.get_recent(top_k=limit, raw=True, session_tag=session_id)
         entries: list[MemoryEntry] = []
@@ -69,12 +69,12 @@ class ConversationMemory:
             )
         return entries
 
-    def build_context(self, session_id: str, limit: int = 6) -> str:
+    def build_context(self, session_id: str, limit: int = 8) -> str:
         entries = self.get_recent(session_id, limit=limit)
         lines = [f"{entry.role.title()}: {entry.content}" for entry in entries]
         return "\n".join(lines)
 
-    def summary(self, session_id: str, limit: int = 6) -> dict[str, int | str]:
+    def summary(self, session_id: str, limit: int = 8) -> dict[str, int | str]:
         entries = self.get_recent(session_id, limit=limit)
         joined = "\n".join(entry.content for entry in entries)
         return {
