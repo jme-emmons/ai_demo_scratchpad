@@ -111,6 +111,9 @@ class DemoService:
     def clear_memory(self, session_id: str) -> None:
         self.memory.clear(session_id)
 
+    def clear_semantic_cache(self) -> None:
+        self.cache.clear()
+
     def ask(
         self,
         session_id: str,

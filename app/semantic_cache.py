@@ -98,6 +98,9 @@ class SemanticCache:
             filters={"session_id": session_id},
         )
 
+    def clear(self) -> None:
+        self.cache.clear()
+
     def _is_missing_index_error(self, exc: ResponseError) -> bool:
         message = str(exc)
         return "No such index" in message and self.index_name in message

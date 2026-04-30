@@ -329,6 +329,13 @@ def render_enhanced_sidebar(service: DemoService) -> None:
                 render_error(st.sidebar, f"Unable to clear enhanced memory: {exc}", traceback.format_exc())
             else:
                 st.sidebar.success("Enhanced memory cleared.")
+        if st.button("Clear Semantic Cache", use_container_width=True):
+            try:
+                service.clear_semantic_cache()
+            except Exception as exc:
+                render_error(st.sidebar, f"Unable to clear semantic cache: {exc}", traceback.format_exc())
+            else:
+                st.sidebar.success("Semantic cache cleared.")
         if st.button("Clear Chat Windows", use_container_width=True):
             clear_chat_windows()
             st.rerun()
